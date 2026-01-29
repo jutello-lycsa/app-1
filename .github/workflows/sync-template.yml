@@ -1,0 +1,113 @@
+name: Sync Template
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REPO: jutello-lycsa/front-template
+      SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set base branch from context
+        run: |
+          echo "BASE_BRANCH=${{ github.event.repository.default_branch }}" >> $GITHUB_ENV
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote remove upstream || true
+          TOKEN="${SYNC_TOKEN:-$GITHUB_TOKEN}"
+          URL="https://x-access-token:${TOKEN}@github.com/${UPSTREAM_REPO}.git"
+          if git ls-remote "$URL" &>/dev/null; then
+            git remote add upstream "$URL"
+            git fetch upstream
+          else
+            echo "Upstream repo '$UPSTREAM_REPO' no accesible o no existe. Se omite la sincronización."
+            echo "::notice title=Sync Skipped::Upstream repository not found or access denied"
+            exit 0
+          fi
+
+      - name: Detect upstream default branch
+        run: |
+          UPSTREAM_BRANCH=$(git remote show upstream | sed -n 's/.*HEAD branch: //p')
+          if [ -z "$UPSTREAM_BRANCH" ]; then UPSTREAM_BRANCH=main; fi
+          echo "UPSTREAM_BRANCH=$UPSTREAM_BRANCH" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          if [ ! -f package-lock.json ]; then
+            npm install
+          else
+            npm ci
+          fi
+
+      - name: Create or update sync branch
+        run: |
+          git checkout -B sync/front-template
+
+      - name: Overlay template files from upstream
+        run: |
+          set -e
+          TOKEN="${SYNC_TOKEN:-$GITHUB_TOKEN}"
+          URL="https://x-access-token:${TOKEN}@github.com/${UPSTREAM_REPO}.git"
+          TMP_DIR=$(mktemp -d)
+          git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL" "$TMP_DIR"
+          rsync -a --delete \
+            --include 'public/***' \
+            --include 'src/***' \
+            --include 'package.json' \
+            --include 'README.md' \
+            --include '.gitignore' \
+            --exclude 'node_modules/***' \
+            --exclude 'build/***' \
+            --exclude '*' \
+            "$TMP_DIR"/ .
+          rm -rf "$TMP_DIR"
+          git add -A
+
+      - name: Push sync branch
+        run: |
+          git push origin sync/front-template --force
+
+      - name: Checkout base branch
+        run: |
+          git checkout "$BASE_BRANCH"
+
+      - name: Check for changes to PR
+        run: |
+          git fetch origin "$BASE_BRANCH"
+          if git diff --quiet "origin/$BASE_BRANCH" "sync/front-template"; then
+            echo "HAS_CHANGES=false" >> $GITHUB_ENV
+            echo "::notice title=Sync Skipped::No differences between $BASE_BRANCH and sync/front-template"
+          else
+            echo "HAS_CHANGES=true" >> $GITHUB_ENV
+          fi
+
+      - name: Create or update PR
+        uses: peter-evans/create-pull-request@v5
+        if: env.HAS_CHANGES == 'true'
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: ${{ env.BASE_BRANCH }}
+          branch: sync/front-template
+          title: "Sync with front-template"
+          body: "This PR keeps the repository in sync with the template repository."
