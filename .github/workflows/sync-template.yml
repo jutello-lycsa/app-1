@@ -40,16 +40,23 @@ jobs:
             echo "::error title=Missing UPSTREAM_REPO::Set env UPSTREAM_REPO with 'owner/name' of the template repository."
             exit 1
           fi
-          TOKEN="${SYNC_TOKEN:-$GITHUB_TOKEN}"
-          URL="https://x-access-token:${TOKEN}@github.com/${UPSTREAM_REPO}.git"
-          if git ls-remote "$URL" &>/dev/null; then
-            git remote add upstream "$URL"
+          URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
+          TOKEN_AUTH="${SYNC_TOKEN}"
+          URL_AUTH="https://x-access-token:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
+
+          if git ls-remote "$URL_PUBLIC" &>/dev/null; then
+            echo "Upstream es público; usando acceso sin token"
+            git remote add upstream "$URL_PUBLIC"
+            git fetch upstream
+          elif [ -n "$TOKEN_AUTH" ] && git ls-remote "$URL_AUTH" &>/dev/null; then
+            echo "Upstream es privado; usando SYNC_TOKEN"
+            git remote add upstream "$URL_AUTH"
             git fetch upstream
           else
-            if [ -z "${SYNC_TOKEN}" ]; then
-              echo "::error title=Missing SYNC_TOKEN::El upstream probablemente es privado. Agrega el secreto de repositorio SYNC_TOKEN con alcance 'repo' (o fine-grained con lectura a ${UPSTREAM_REPO})."
+            if [ -z "$TOKEN_AUTH" ]; then
+              echo "::error title=Missing SYNC_TOKEN::El upstream puede ser privado. Agrega el secreto SYNC_TOKEN con permiso de lectura al repo ${UPSTREAM_REPO}."
             else
-              echo "::error title=Access denied or not found::No se puede acceder a ${UPSTREAM_REPO} con el token proporcionado. Verifica que el repo exista y que el token tenga permisos."
+              echo "::error title=Access denied or not found::No se puede acceder a ${UPSTREAM_REPO}. Verifica que el repo exista y que el token tenga permisos (SSO autorizado si aplica)."
             fi
             exit 1
           fi
@@ -75,10 +82,18 @@ jobs:
       - name: Overlay template files from upstream
         run: |
           set -e
-          TOKEN="${SYNC_TOKEN:-$GITHUB_TOKEN}"
-          URL="https://x-access-token:${TOKEN}@github.com/${UPSTREAM_REPO}.git"
+          URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
+          TOKEN_AUTH="${SYNC_TOKEN}"
+          URL_AUTH="https://x-access-token:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
           TMP_DIR=$(mktemp -d)
-          git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL" "$TMP_DIR"
+          if git ls-remote "$URL_PUBLIC" &>/dev/null; then
+            git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_PUBLIC" "$TMP_DIR"
+          elif [ -n "$TOKEN_AUTH" ]; then
+            git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_AUTH" "$TMP_DIR"
+          else
+            echo "::error title=Missing SYNC_TOKEN::No se puede clonar el upstream. Proporciona SYNC_TOKEN para repos privados."
+            exit 1
+          fi
           rsync -a --delete \
             --include 'public/***' \
             --include 'src/***' \
