@@ -69,7 +69,7 @@ jobs:
             echo "Upstream es público; usando acceso sin token"
             git remote add upstream "$URL_PUBLIC"
             git fetch upstream
-          elif [ -n "$TOKEN_AUTH" ] && git ls-remote "$URL_AUTH" &>/dev/null; then
+          elif [ -n "$TOKEN_AUTH" ] && git -c http.extraHeader="Authorization: Basic $BASIC_AUTH" ls-remote "$URL_PUBLIC" &>/dev/null; then
             echo "Upstream es privado; usando SYNC_TOKEN (Basic auth header)"
             git remote add upstream "$URL_PUBLIC"
             git -c http.extraHeader="Authorization: Basic $BASIC_AUTH" fetch upstream
