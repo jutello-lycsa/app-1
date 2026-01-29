@@ -37,23 +37,29 @@ jobs:
         run: |
           set -e
 
-          # Verificar que el token está disponible
+          echo "Paso 1: Verificar que el token está disponible"
           if [ -z "$SYNC_TOKEN" ]; then
             echo "::error::SYNC_TOKEN no está configurado. Agrega el secreto con permisos de lectura al repo upstream."
             exit 1
           fi
 
-          # Clonar el repositorio upstream usando el token
+          echo "Paso 2: Clonar el repositorio upstream usando el token"
           TMP_DIR=$(mktemp -d)
           echo "Clonando upstream ${UPSTREAM_REPO}..."
           git clone --depth 1 --branch "$UPSTREAM_BRANCH" \
             "https://${SYNC_TOKEN}@github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
 
-          # Comparar el main del upstream con el main local
-          git fetch origin main
-          git diff "$TMP_DIR" ./ > diff_output.txt
+          echo "Paso 3: Mostrar contenido del directorio clonado"
+          ls "$TMP_DIR"
 
-          # Limpiar
+          echo "Paso 4: Comparar el main del upstream con el main local"
+          git fetch origin main
+          git diff "$TMP_DIR" ./ > diff_output.txt || echo "Error en git diff"
+
+          echo "Paso 5: Mostrar el resultado del diff"
+          cat diff_output.txt
+
+          echo "Paso 6: Limpiar el directorio temporal"
           rm -rf "$TMP_DIR"
 
       - name: Check for changes
