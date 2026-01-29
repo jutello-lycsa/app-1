@@ -54,7 +54,8 @@ jobs:
           fi
           URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
           TOKEN_AUTH="${SYNC_TOKEN}"
-          URL_AUTH="https://x-access-token:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
+          OWNER=$(echo "$UPSTREAM_REPO" | cut -d'/' -f1)
+          URL_AUTH="https://${OWNER}:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
 
           if git ls-remote "$URL_PUBLIC" &>/dev/null; then
             echo "Upstream es público; usando acceso sin token"
@@ -96,7 +97,8 @@ jobs:
           set -e
           URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
           TOKEN_AUTH="${SYNC_TOKEN}"
-          URL_AUTH="https://x-access-token:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
+          OWNER=$(echo "$UPSTREAM_REPO" | cut -d'/' -f1)
+          URL_AUTH="https://${OWNER}:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
           TMP_DIR=$(mktemp -d)
           if git ls-remote "$URL_PUBLIC" &>/dev/null; then
             git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_PUBLIC" "$TMP_DIR"
