@@ -14,149 +14,93 @@ jobs:
     runs-on: ubuntu-latest
     env:
       UPSTREAM_REPO: jutello-lycsa/front-template
-      SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      UPSTREAM_BRANCH: main
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set base branch from context
-        run: |
-          echo "BASE_BRANCH=${{ github.event.repository.default_branch }}" >> $GITHUB_ENV
+      - name: Set base branch
+        run: echo "BASE_BRANCH=${{ github.event.repository.default_branch }}" >> $GITHUB_ENV
 
       - name: Set up Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Debug secret presence
-        run: |
-          if [ -n "${SYNC_TOKEN}" ]; then
-            echo "::notice title=Secret Check::SYNC_TOKEN is set"
-          else
-            echo "::warning title=Secret Check::SYNC_TOKEN is EMPTY (repo secret missing or not accessible)"
-          fi
-          echo "Actor=${{ github.actor }} Event=${{ github.event_name }} Repo=${{ github.repository }}"
-
-      - name: Diagnose upstream access
-        run: |
-          URL_API="https://api.github.com/repos/${UPSTREAM_REPO}"
-          CODE_PUBLIC=$(curl -s -o /dev/null -w "%{http_code}" "$URL_API")
-          echo "HTTP (public) $URL_API => $CODE_PUBLIC"
-          if [ -n "${SYNC_TOKEN}" ]; then
-            CODE_AUTH=$(curl -s -o /dev/null -H "Authorization: token ${SYNC_TOKEN}" -w "%{http_code}" "$URL_API")
-            echo "HTTP (auth)   $URL_API => $CODE_AUTH"
-          else
-            echo "SYNC_TOKEN not set; skip auth check"
-          fi
-
-      - name: Add upstream remote
-        run: |
-          git remote remove upstream || true
-          if [ -z "${UPSTREAM_REPO}" ]; then
-            echo "::error title=Missing UPSTREAM_REPO::Set env UPSTREAM_REPO with 'owner/name' of the template repository."
-            exit 1
-          fi
-          URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
-          TOKEN_AUTH="${SYNC_TOKEN}"
-          OWNER=$(echo "$UPSTREAM_REPO" | cut -d'/' -f1)
-          URL_AUTH="https://${OWNER}:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
-
-          # Agregar registros de depuración
-          echo "DEBUG: URL_PUBLIC=$URL_PUBLIC"
-          echo "DEBUG: URL_AUTH=$URL_AUTH"
-
-          if git ls-remote "$URL_PUBLIC" &>/dev/null; then
-            echo "Upstream es público; usando acceso sin token"
-            git remote add upstream "$URL_PUBLIC"
-            git fetch upstream
-          elif [ -n "$TOKEN_AUTH" ] && git ls-remote "$URL_AUTH" &>/dev/null; then
-            echo "Upstream es privado; usando SYNC_TOKEN (URL auth)"
-            git remote add upstream "$URL_AUTH"
-            git fetch upstream
-          else
-            if [ -z "$TOKEN_AUTH" ]; then
-              echo "::error title=Missing SYNC_TOKEN::El upstream puede ser privado. Agrega el secreto SYNC_TOKEN con permiso de lectura al repo ${UPSTREAM_REPO}."
-            else
-              echo "::error title=Access denied or not found::No se puede acceder a ${UPSTREAM_REPO}. Verifica que el repo exista y que el token tenga permisos (SSO autorizado si aplica)."
-            fi
-            exit 1
-          fi
-
-      - name: Detect upstream default branch
-        run: |
-          UPSTREAM_BRANCH=$(git remote show upstream | sed -n 's/.*HEAD branch: //p')
-          if [ -z "$UPSTREAM_BRANCH" ]; then UPSTREAM_BRANCH=main; fi
-          echo "UPSTREAM_BRANCH=$UPSTREAM_BRANCH" >> $GITHUB_ENV
-
-      - name: Install dependencies
-        run: |
-          if [ ! -f package-lock.json ]; then
-            npm install
-          else
-            npm ci
-          fi
-
-      - name: Create or update sync branch
-        run: |
-          git checkout -B sync/front-template
-
-      - name: Overlay template files from upstream
+      - name: Clone upstream and sync files
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -e
-          URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
-          TOKEN_AUTH="${SYNC_TOKEN}"
-          OWNER=$(echo "$UPSTREAM_REPO" | cut -d'/' -f1)
-          URL_AUTH="https://${OWNER}:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
-          TMP_DIR=$(mktemp -d)
-          if git ls-remote "$URL_PUBLIC" &>/dev/null; then
-            git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_PUBLIC" "$TMP_DIR"
-          elif [ -n "$TOKEN_AUTH" ]; then
-            git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_AUTH" "$TMP_DIR"
-          else
-            echo "::error title=Missing SYNC_TOKEN::No se puede clonar el upstream. Proporciona SYNC_TOKEN para repos privados."
+
+          # Verificar que el token está disponible
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo "::error::SYNC_TOKEN no está configurado. Agrega el secreto con permisos de lectura al repo upstream."
             exit 1
           fi
-          rsync -a --delete \
-            --include 'public/***' \
-            --include 'src/***' \
-            --include 'package.json' \
-            --include 'README.md' \
-            --include '.gitignore' \
-            --exclude 'node_modules/***' \
-            --exclude 'build/***' \
-            --exclude '*' \
-            "$TMP_DIR"/ .
+
+          # Clonar el repositorio upstream usando el token
+          TMP_DIR=$(mktemp -d)
+          echo "Clonando upstream ${UPSTREAM_REPO}..."
+          git clone --depth 1 --branch "$UPSTREAM_BRANCH" \
+            "https://${SYNC_TOKEN}@github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
+
+          # Crear o cambiar a la rama de sincronización
+          git checkout -B sync/front-template
+
+          # Sincronizar archivos del template
+          echo "Sincronizando archivos..."
+          rsync -av --delete \
+            --include='public/***' \
+            --include='src/***' \
+            --include='package.json' \
+            --include='README.md' \
+            --include='.gitignore' \
+            --exclude='node_modules/***' \
+            --exclude='build/***' \
+            --exclude='.git/***' \
+            --exclude='*' \
+            "$TMP_DIR/" ./
+
+          # Limpiar
           rm -rf "$TMP_DIR"
+
+          # Agregar cambios
           git add -A
 
-      - name: Push sync branch
+      - name: Check for changes
+        id: changes
         run: |
-          git push origin sync/front-template --force
-
-      - name: Checkout base branch
-        run: |
-          git checkout "$BASE_BRANCH"
-
-      - name: Check for changes to PR
-        run: |
-          git fetch origin "$BASE_BRANCH"
-          if git diff --quiet "origin/$BASE_BRANCH" "sync/front-template"; then
-            echo "HAS_CHANGES=false" >> $GITHUB_ENV
-            echo "::notice title=Sync Skipped::No differences between $BASE_BRANCH and sync/front-template"
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "::notice::No hay cambios para sincronizar"
           else
-            echo "HAS_CHANGES=true" >> $GITHUB_ENV
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            git commit -m "Sync with upstream template"
           fi
 
-      - name: Create or update PR
+      - name: Push sync branch
+        if: steps.changes.outputs.has_changes == 'true'
+        run: git push origin sync/front-template --force
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
         uses: peter-evans/create-pull-request@v5
-        if: env.HAS_CHANGES == 'true'
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           base: ${{ env.BASE_BRANCH }}
           branch: sync/front-template
-          title: "Sync with front-template"
-          body: "This PR keeps the repository in sync with the template repository."
+          title: "🔄 Sync with front-template"
+          body: |
+            Este PR sincroniza el repositorio con los cambios del template upstream.
+
+            **Upstream:** `${{ env.UPSTREAM_REPO }}`
+            **Branch:** `${{ env.UPSTREAM_BRANCH }}`
+
+            ---
+            _Generado automáticamente por GitHub Actions_
+          delete-branch: false
