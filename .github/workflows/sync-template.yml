@@ -12,7 +12,6 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    environment: SYNC_TOKEN
     env:
       UPSTREAM_REPO: jutello-lycsa/front-template
       SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
