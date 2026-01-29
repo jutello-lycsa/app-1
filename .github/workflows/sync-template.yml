@@ -65,6 +65,10 @@ jobs:
           OWNER=$(echo "$UPSTREAM_REPO" | cut -d'/' -f1)
           URL_AUTH="https://${OWNER}:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
 
+          # Agregar registros de depuración
+          echo "DEBUG: URL_PUBLIC=$URL_PUBLIC"
+          echo "DEBUG: URL_AUTH=$URL_AUTH"
+
           if git ls-remote "$URL_PUBLIC" &>/dev/null; then
             echo "Upstream es público; usando acceso sin token"
             git remote add upstream "$URL_PUBLIC"
