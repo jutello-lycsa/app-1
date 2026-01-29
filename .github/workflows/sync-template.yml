@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
+    inputs:
+      pat:
+        description: "Temporary PAT for quick test (classic 'repo' scope)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -14,7 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       UPSTREAM_REPO: jutello-lycsa/front-template
-      SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
@@ -31,6 +35,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Populate SYNC_TOKEN (secret or input)
+        run: |
+          if [ -n "${{ secrets.SYNC_TOKEN }}" ]; then
+            echo "SYNC_TOKEN=${{ secrets.SYNC_TOKEN }}" >> $GITHUB_ENV
+            echo "Using SYNC_TOKEN from repository secret"
+          elif [ -n "${{ github.event.inputs.pat }}" ]; then
+            echo "::add-mask::${{ github.event.inputs.pat }}"
+            echo "SYNC_TOKEN=${{ github.event.inputs.pat }}" >> $GITHUB_ENV
+            echo "Using SYNC_TOKEN from workflow input"
+          else
+            echo "No SYNC_TOKEN provided via secret or input"
+          fi
 
       - name: Diagnose upstream access
         run: |
