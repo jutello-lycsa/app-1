@@ -33,6 +33,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Diagnose upstream access
+        run: |
+          URL_API="https://api.github.com/repos/${UPSTREAM_REPO}"
+          CODE_PUBLIC=$(curl -s -o /dev/null -w "%{http_code}" "$URL_API")
+          echo "HTTP (public) $URL_API => $CODE_PUBLIC"
+          if [ -n "${SYNC_TOKEN}" ]; then
+            CODE_AUTH=$(curl -s -o /dev/null -H "Authorization: token ${SYNC_TOKEN}" -w "%{http_code}" "$URL_API")
+            echo "HTTP (auth)   $URL_API => $CODE_AUTH"
+          else
+            echo "SYNC_TOKEN not set; skip auth check"
+          fi
+
       - name: Add upstream remote
         run: |
           git remote remove upstream || true
