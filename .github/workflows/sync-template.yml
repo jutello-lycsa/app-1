@@ -2,7 +2,7 @@ name: Sync Template
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -35,15 +35,22 @@ jobs:
       - name: Add upstream remote
         run: |
           git remote remove upstream || true
+          if [ -z "${UPSTREAM_REPO}" ]; then
+            echo "::error title=Missing UPSTREAM_REPO::Set env UPSTREAM_REPO with 'owner/name' of the template repository."
+            exit 1
+          fi
           TOKEN="${SYNC_TOKEN:-$GITHUB_TOKEN}"
           URL="https://x-access-token:${TOKEN}@github.com/${UPSTREAM_REPO}.git"
           if git ls-remote "$URL" &>/dev/null; then
             git remote add upstream "$URL"
             git fetch upstream
           else
-            echo "Upstream repo '$UPSTREAM_REPO' no accesible o no existe. Se omite la sincronización."
-            echo "::notice title=Sync Skipped::Upstream repository not found or access denied"
-            exit 0
+            if [ -z "${SYNC_TOKEN}" ]; then
+              echo "::error title=Missing SYNC_TOKEN::El upstream probablemente es privado. Agrega el secreto de repositorio SYNC_TOKEN con alcance 'repo' (o fine-grained con lectura a ${UPSTREAM_REPO})."
+            else
+              echo "::error title=Access denied or not found::No se puede acceder a ${UPSTREAM_REPO} con el token proporcionado. Verifica que el repo exista y que el token tenga permisos."
+            fi
+            exit 1
           fi
 
       - name: Detect upstream default branch
