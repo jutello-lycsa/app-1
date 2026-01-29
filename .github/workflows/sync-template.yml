@@ -63,17 +63,21 @@ jobs:
           URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
           TOKEN_AUTH="${SYNC_TOKEN}"
           OWNER=$(echo "$UPSTREAM_REPO" | cut -d'/' -f1)
-          URL_AUTH="https://${OWNER}:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
+          BASIC_AUTH=$(printf "%s:%s" "$OWNER" "$TOKEN_AUTH" | base64)
 
           if git ls-remote "$URL_PUBLIC" &>/dev/null; then
             echo "Upstream es público; usando acceso sin token"
             git remote add upstream "$URL_PUBLIC"
             git fetch upstream
           elif [ -n "$TOKEN_AUTH" ] && git ls-remote "$URL_AUTH" &>/dev/null; then
-            echo "Upstream es privado; usando SYNC_TOKEN"
-            git remote add upstream "$URL_AUTH"
-            git fetch upstream
+            echo "Upstream es privado; usando SYNC_TOKEN (Basic auth header)"
+            git remote add upstream "$URL_PUBLIC"
+            git -c http.extraHeader="Authorization: Basic $BASIC_AUTH" fetch upstream
           else
+            # Try header-based ls-remote with token to get clearer signal
+            if [ -n "$TOKEN_AUTH" ]; then
+              git -c http.extraHeader="Authorization: Basic $BASIC_AUTH" ls-remote "$URL_PUBLIC" &>/dev/null || true
+            fi
             if [ -z "$TOKEN_AUTH" ]; then
               echo "::error title=Missing SYNC_TOKEN::El upstream puede ser privado. Agrega el secreto SYNC_TOKEN con permiso de lectura al repo ${UPSTREAM_REPO}."
             else
@@ -106,12 +110,12 @@ jobs:
           URL_PUBLIC="https://github.com/${UPSTREAM_REPO}.git"
           TOKEN_AUTH="${SYNC_TOKEN}"
           OWNER=$(echo "$UPSTREAM_REPO" | cut -d'/' -f1)
-          URL_AUTH="https://${OWNER}:${TOKEN_AUTH}@github.com/${UPSTREAM_REPO}.git"
+          BASIC_AUTH=$(printf "%s:%s" "$OWNER" "$TOKEN_AUTH" | base64)
           TMP_DIR=$(mktemp -d)
           if git ls-remote "$URL_PUBLIC" &>/dev/null; then
             git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_PUBLIC" "$TMP_DIR"
           elif [ -n "$TOKEN_AUTH" ]; then
-            git -c advice.detachedHead=false clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_AUTH" "$TMP_DIR"
+            git -c advice.detachedHead=false -c http.extraHeader="Authorization: Basic $BASIC_AUTH" clone --depth 1 --branch "$UPSTREAM_BRANCH" "$URL_PUBLIC" "$TMP_DIR"
           else
             echo "::error title=Missing SYNC_TOKEN::No se puede clonar el upstream. Proporciona SYNC_TOKEN para repos privados."
             exit 1
