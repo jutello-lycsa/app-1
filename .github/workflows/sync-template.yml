@@ -32,6 +32,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Debug secret presence
+        run: |
+          if [ -n "${SYNC_TOKEN}" ]; then
+            echo "::notice title=Secret Check::SYNC_TOKEN is set"
+          else
+            echo "::warning title=Secret Check::SYNC_TOKEN is EMPTY (repo secret missing or not accessible)"
+          fi
+          echo "Actor=${{ github.actor }} Event=${{ github.event_name }} Repo=${{ github.repository }}"
+
       - name: Diagnose upstream access
         run: |
           URL_API="https://api.github.com/repos/${UPSTREAM_REPO}"
