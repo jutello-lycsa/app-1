@@ -36,28 +36,29 @@ jobs:
           git remote add upstream https://github.com/${UPSTREAM_REPO}.git || echo "Upstream ya configurado"
           git fetch upstream
 
-      - name: Sync with upstream
+      - name: Create sync branch from upstream
         id: changes
         run: |
-          TMP_DIR=$(mktemp -d)
-          echo "Clonando upstream ${UPSTREAM_REPO}..."
-          git clone --depth 1 --branch "$UPSTREAM_BRANCH" \
-            "https://github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
-
-          echo "Copiando archivos del upstream al repositorio local..."
-          rsync -av --exclude='.git' --exclude='.github/workflows/sync-template.yml' "$TMP_DIR/" ./
-
-          echo "Limpiando directorio temporal..."
-          rm -rf "$TMP_DIR"
-
-          echo "Verificando cambios..."
+          echo "Creando rama sync/front-template desde upstream..."
+          
+          # Eliminar la rama local si existe
+          git branch -D sync/front-template 2>/dev/null || true
+          
+          # Crear la rama sync/front-template basada en upstream/main
+          git checkout -b sync/front-template upstream/${UPSTREAM_BRANCH}
+          
+          # Restaurar el workflow de sincronización (no queremos sobreescribirlo)
+          git checkout ${BASE_BRANCH} -- .github/workflows/sync-template.yml 2>/dev/null || true
           git add -A
-          if git diff --cached --quiet; then
+          git diff --cached --quiet || git commit -m "Preserve sync-template workflow"
+          
+          # Verificar si hay diferencias con main
+          if git diff --quiet ${BASE_BRANCH}..sync/front-template; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "::notice::No hay cambios para sincronizar"
           else
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            git commit -m "Sync with upstream template"
+            echo "Hay cambios para sincronizar"
           fi
 
       - name: Log Last Commit Headers
@@ -69,7 +70,6 @@ jobs:
       - name: Push sync branch
         if: steps.changes.outputs.has_changes == 'true'
         run: |
-          git checkout -b sync/front-template || git checkout sync/front-template
           git push origin sync/front-template --force
 
       - name: Crear Pull Request hacia main
