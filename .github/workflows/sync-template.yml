@@ -140,20 +140,23 @@ jobs:
           echo "Paso 1: Configurar el upstream"
           git remote add upstream https://github.com/jutello-lycsa/front-template.git || echo "Upstream ya configurado"
 
-          echo "Paso 2: Traer información del upstream"
-          git fetch upstream
+          echo "Paso 2: Probar conexión al upstream"
+          git ls-remote https://github.com/jutello-lycsa/front-template.git || echo "Error: No se puede acceder al upstream. Verifica la URL o los permisos."
 
-          echo "Paso 3: Ver ramas remotas disponibles"
+          echo "Paso 3: Traer información del upstream"
+          git fetch upstream || echo "Error: No se pudo traer información del upstream."
+
+          echo "Paso 4: Ver ramas remotas disponibles"
           git branch -r
 
-          echo "Paso 4: Diff completo entre upstream/main y HEAD"
+          echo "Paso 5: Diff completo entre upstream/main y HEAD"
           git diff upstream/main HEAD > full_diff.txt
           echo "Diff completo generado en full_diff.txt"
 
-          echo "Paso 5: Solo nombres y estado de archivos"
+          echo "Paso 6: Solo nombres y estado de archivos"
           git diff --name-status upstream/main HEAD > name_status_diff.txt
           echo "Diff de nombres y estado generado en name_status_diff.txt"
 
-          echo "Paso 6: Resumen de cambios por archivo"
+          echo "Paso 7: Resumen de cambios por archivo"
           git diff --stat upstream/main HEAD > stat_diff.txt
           echo "Resumen de cambios generado en stat_diff.txt"
