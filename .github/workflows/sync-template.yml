@@ -47,10 +47,10 @@ jobs:
           # Crear la rama sync/front-template basada en upstream/main
           git checkout -b sync/front-template upstream/${UPSTREAM_BRANCH}
           
-          # Excluir el archivo de workflow
-          git reset .github/workflows/sync-template.yml
+          # Eliminar el archivo de workflow
+          git rm -f .github/workflows/sync-template.yml
           git add -A
-          git diff --cached --quiet || git commit -m "Preserve sync-template workflow"
+          git diff --cached --quiet || git commit -m "Remove sync-template workflow from sync branch"
           
           # Verificar si hay diferencias con main
           if git diff --quiet ${BASE_BRANCH}..sync/front-template; then
