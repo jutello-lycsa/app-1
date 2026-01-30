@@ -47,18 +47,18 @@ jobs:
           # Crear la rama sync/front-template basada en upstream/main
           git checkout -b sync/front-template upstream/${UPSTREAM_BRANCH}
           
-          # Eliminar el archivo de workflow
-          git rm -f .github/workflows/sync-template.yml
+          # Restaurar el workflow de sincronización (no queremos sobreescribirlo)
+          git checkout ${BASE_BRANCH} -- .github/workflows/sync-template.yml 2>/dev/null || true
           git add -A
-          git diff --cached --quiet || git commit -m "Remove sync-template workflow from sync branch"
+          git diff --cached --quiet || git commit -m "Preserve sync-template workflow"
           
-          # Verificar si hay diferencias con main
-          if git diff --quiet ${BASE_BRANCH}..sync/front-template; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "::notice::No hay cambios para sincronizar"
-          else
+          # Verificar si hay diferencias con main, ignorando el archivo de workflow
+          if git diff -- . ':!.github/workflows/sync-template.yml' | grep -q .; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "Hay cambios para sincronizar"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "::notice::No hay cambios para sincronizar"
           fi
 
       - name: Log Last Commit Headers
