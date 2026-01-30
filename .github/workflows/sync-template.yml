@@ -116,13 +116,26 @@ jobs:
 
       - name: Configure upstream
         run: |
-          git remote add upstream https://github.com/jutello-lycsa/front-template.git || echo "Upstream ya configurado"
+          git remote add upstream https://github.com/${UPSTREAM_REPO}.git || echo "Upstream ya configurado"
 
       - name: Fetch upstream changes
         run: |
           git fetch upstream || echo "Error: No se pudo traer información del upstream. Verifica la URL."
 
-      - name: Compare branches
+      - name: Check for changes
         run: |
-          git diff upstream/main main > diff_output.txt || echo "Error en git diff"
-          echo "Resultado del diff:" && cat diff_output.txt
+          echo "Configurando upstream..."
+          git remote add upstream https://github.com/${UPSTREAM_REPO}.git || echo "Upstream ya configurado"
+
+          echo "Trayendo cambios del upstream..."
+          git fetch upstream
+
+          echo "Comparando ramas..."
+          if ! git diff upstream/${UPSTREAM_BRANCH} ${BASE_BRANCH} | grep -q .; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "::notice::No hay cambios para sincronizar"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            git add -A
+            git commit -m "Sync with upstream template"
+          fi
