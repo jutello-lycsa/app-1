@@ -131,11 +131,15 @@ jobs:
           git fetch upstream
 
           echo "Comparando ramas..."
-          if ! git diff upstream/${UPSTREAM_BRANCH} ${BASE_BRANCH} | grep -q .; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "::notice::No hay cambios para sincronizar"
-          else
+          git diff upstream/${UPSTREAM_BRANCH} ${BASE_BRANCH} > diff_output.txt || echo "Error en git diff"
+
+          echo "Resultado del diff:" && cat diff_output.txt
+
+          if [ -s diff_output.txt ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             git add -A
             git commit -m "Sync with upstream template"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "::notice::No hay cambios para sincronizar"
           fi
