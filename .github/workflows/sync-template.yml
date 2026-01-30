@@ -31,25 +31,30 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Clone upstream repository
+      - name: Sync with upstream
+        id: changes
         run: |
           TMP_DIR=$(mktemp -d)
           echo "Clonando upstream ${UPSTREAM_REPO}..."
           git clone --depth 1 --branch "$UPSTREAM_BRANCH" \
             "https://github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
 
-          echo "Comparando contenido..."
-          if ! git diff "$TMP_DIR" ./ | grep -q .; then
+          echo "Copiando archivos del upstream al repositorio local..."
+          # Excluir .git y archivos específicos del repositorio
+          rsync -av --exclude='.git' --exclude='.github/workflows/sync-template.yml' "$TMP_DIR/" ./
+
+          echo "Limpiando directorio temporal..."
+          rm -rf "$TMP_DIR"
+
+          echo "Verificando cambios..."
+          git add -A
+          if git diff --cached --quiet; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "::notice::No hay cambios para sincronizar"
           else
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            git add -A
             git commit -m "Sync with upstream template"
           fi
-
-          echo "Limpiando directorio temporal..."
-          rm -rf "$TMP_DIR"
 
       - name: Log Last Commit Headers
         run: |
@@ -65,7 +70,9 @@ jobs:
 
       - name: Push sync branch
         if: steps.changes.outputs.has_changes == 'true'
-        run: git push origin sync/front-template
+        run: |
+          git checkout -b sync/front-template || git checkout sync/front-template
+          git push origin sync/front-template --force
 
       - name: Crear Pull Request hacia main
         if: steps.changes.outputs.has_changes == 'true'
