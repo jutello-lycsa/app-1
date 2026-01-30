@@ -31,6 +31,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Configure upstream
+        run: |
+          git remote add upstream https://github.com/${UPSTREAM_REPO}.git || echo "Upstream ya configurado"
+          git fetch upstream
+
       - name: Sync with upstream
         id: changes
         run: |
@@ -40,7 +45,6 @@ jobs:
             "https://github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
 
           echo "Copiando archivos del upstream al repositorio local..."
-          # Excluir .git y archivos específicos del repositorio
           rsync -av --exclude='.git' --exclude='.github/workflows/sync-template.yml' "$TMP_DIR/" ./
 
           echo "Limpiando directorio temporal..."
@@ -57,16 +61,10 @@ jobs:
           fi
 
       - name: Log Last Commit Headers
+        if: steps.changes.outputs.has_changes == 'true'
         run: |
-          TMP_DIR=$(mktemp -d)
-          echo "Clonando upstream para obtener el último commit..."
-          git clone --depth 1 --branch "$UPSTREAM_BRANCH" \
-            "https://github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
-
-          echo "Último commit upstream:" && git -C "$TMP_DIR" log -1 --pretty=format:"%H %an %s"
-
-          echo "Limpiando directorio temporal..."
-          rm -rf "$TMP_DIR"
+          echo "Último commit local:"
+          git log -1 --pretty=format:"%H %an %s"
 
       - name: Push sync branch
         if: steps.changes.outputs.has_changes == 'true'
@@ -90,46 +88,3 @@ jobs:
 
             ---
             _Generado automáticamente por GitHub Actions_
-
-      - name: Traer cambios del upstream y crear PR
-        run: |
-          set -e
-
-          echo "Paso 1: Traer cambios del upstream"
-          git fetch upstream
-
-          echo "Paso 2: Fusionar cambios del upstream/main en la rama local"
-          git merge upstream/main || echo "No hay cambios para fusionar"
-
-          echo "Paso 3: Crear Pull Request"
-          gh pr create --base main --head main --title "Merge cambios del upstream" --body "Este PR fusiona los cambios traídos desde el upstream." || echo "Error al crear el Pull Request"
-
-      - name: Configure upstream
-        run: |
-          git remote add upstream https://github.com/${UPSTREAM_REPO}.git || echo "Upstream ya configurado"
-
-      - name: Fetch upstream changes
-        run: |
-          git fetch upstream || echo "Error: No se pudo traer información del upstream. Verifica la URL."
-
-      - name: Check for changes
-        run: |
-          echo "Configurando upstream..."
-          git remote add upstream https://github.com/${UPSTREAM_REPO}.git || echo "Upstream ya configurado"
-
-          echo "Trayendo cambios del upstream..."
-          git fetch upstream
-
-          echo "Comparando ramas..."
-          git diff upstream/${UPSTREAM_BRANCH} ${BASE_BRANCH} > diff_output.txt || echo "Error en git diff"
-
-          echo "Resultado del diff:" && cat diff_output.txt
-
-          if [ -s diff_output.txt ]; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            git add -A
-            git commit -m "Sync with upstream template"
-          else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "::notice::No hay cambios para sincronizar"
-          fi
