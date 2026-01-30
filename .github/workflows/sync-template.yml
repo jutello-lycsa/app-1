@@ -47,8 +47,8 @@ jobs:
           # Crear la rama sync/front-template basada en upstream/main
           git checkout -b sync/front-template upstream/${UPSTREAM_BRANCH}
           
-          # Restaurar el workflow de sincronización (no queremos sobreescribirlo)
-          git checkout ${BASE_BRANCH} -- .github/workflows/sync-template.yml 2>/dev/null || true
+          # Excluir el archivo de workflow
+          git reset .github/workflows/sync-template.yml
           git add -A
           git diff --cached --quiet || git commit -m "Preserve sync-template workflow"
           
