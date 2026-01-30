@@ -28,10 +28,9 @@ VERSION: 0.0.6-2
 - If organization SSO applies, authorize the PAT for the org.
 
 ### Verify and Run
-1) Confirm upstream access (replace `<TOKEN>` if private):
+1) Confirm upstream access:
 ```bash
 git ls-remote https://github.com/jutello-lycsa/front-template.git
-git ls-remote https://x-access-token:<TOKEN>@github.com/jutello-lycsa/front-template.git
 ```
 2) Trigger the workflow manually in GitHub → Actions → "Sync Template" → Run workflow.
 3) Expected result: branch `sync/front-template` is pushed and a PR is opened to the default branch if there are changes.

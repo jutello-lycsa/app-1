@@ -31,57 +31,43 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Clone upstream and compare
-        env:
-          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+      - name: Validate SYNC_TOKEN
         run: |
-          set -e
-
-          echo "Paso 1: Verificar que el token está disponible"
           if [ -z "$SYNC_TOKEN" ]; then
             echo "::error::SYNC_TOKEN no está configurado. Agrega el secreto con permisos de lectura al repo upstream."
             exit 1
           fi
 
-          echo "Paso 2: Clonar el repositorio upstream usando el token"
+      - name: Clone upstream repository
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
           TMP_DIR=$(mktemp -d)
           echo "Clonando upstream ${UPSTREAM_REPO}..."
           git clone --depth 1 --branch "$UPSTREAM_BRANCH" \
             "https://${SYNC_TOKEN}@github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
 
-          echo "Paso 3: Mostrar contenido del directorio clonado"
-          ls "$TMP_DIR"
-
-          echo "Paso 4: Comparar el main del upstream con el main local"
+          echo "Comparando contenido..."
           git fetch origin main
           git diff "$TMP_DIR" ./ > diff_output.txt || echo "Error en git diff"
 
-          echo "Paso 5: Mostrar el resultado del diff"
-          cat diff_output.txt
+          echo "Resultado del diff:" && cat diff_output.txt
 
-          echo "Paso 6: Limpiar el directorio temporal"
+          echo "Limpiando directorio temporal..."
           rm -rf "$TMP_DIR"
 
       - name: Log Last Commit Headers
         env:
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
-          set -e
-
-          echo "Paso 1: Obtener el último commit del repositorio local"
-          git log -1 --pretty=format:"%H %an %s" > local_commit.txt
-          echo "Último commit local:" && cat local_commit.txt
-
-          echo "Paso 2: Clonar el repositorio upstream para obtener el último commit"
           TMP_DIR=$(mktemp -d)
+          echo "Clonando upstream para obtener el último commit..."
           git clone --depth 1 --branch "$UPSTREAM_BRANCH" \
             "https://${SYNC_TOKEN}@github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
 
-          echo "Paso 3: Obtener el último commit del repositorio upstream"
-          git -C "$TMP_DIR" log -1 --pretty=format:"%H %an %s" > upstream_commit.txt
-          echo "Último commit upstream:" && cat upstream_commit.txt
+          echo "Último commit upstream:" && git -C "$TMP_DIR" log -1 --pretty=format:"%H %an %s"
 
-          echo "Paso 4: Limpiar el directorio temporal"
+          echo "Limpiando directorio temporal..."
           rm -rf "$TMP_DIR"
 
       - name: Check for changes
@@ -97,7 +83,7 @@ jobs:
 
       - name: Push sync branch
         if: steps.changes.outputs.has_changes == 'true'
-        run: git push origin sync/front-template --force
+        run: git push origin sync/front-template
 
       - name: Crear Pull Request hacia main
         if: steps.changes.outputs.has_changes == 'true'
@@ -154,7 +140,7 @@ jobs:
           git remote add upstream https://github.com/jutello-lycsa/front-template.git || echo "Upstream ya configurado"
 
           echo "Paso 2: Probar conexión al upstream"
-          git ls-remote https://github.com/jutello-lycsa/front-template.git || echo "Error: No se puede acceder al upstream. Verifica la URL o los permisos."
+          git ls-remote https://github.com/jutello-lycsa/front-template.git || echo "Error: No se puede acceder al upstream. Verifica la URL."
 
           echo "Paso 3: Traer información del upstream"
           git fetch upstream || echo "Error: No se pudo traer información del upstream."
