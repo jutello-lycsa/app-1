@@ -44,18 +44,27 @@ jobs:
       - name: Create sync branch from upstream
         id: changes
         run: |
-          echo "Creando rama sync/front-template desde upstream..."
-          
+          echo "Creando rama sync/front-template como snapshot limpio del upstream..."
+
           # Eliminar la rama local si existe
           git branch -D sync/front-template 2>/dev/null || true
-          
-          # Crear la rama sync/front-template basada en upstream/main
-          git checkout -b sync/front-template upstream/${UPSTREAM_BRANCH}
-          
-          # Remover el workflow de la rama de sync para evitar bloqueos por secret scanning
-          git rm -f .github/workflows/sync-template.yml || true
+
+          # Crear una rama huérfana (sin historial) para evitar bloqueos por commits previos
+          git checkout --orphan sync/front-template
+
+          # Limpiar el árbol de trabajo
+          git rm -rf . 2>/dev/null || true
+
+          # Volcar el contenido del upstream/main a la rama de sync sin traer historial
+          echo "Exportando árbol de upstream/${UPSTREAM_BRANCH}..."
+          git archive --format=tar upstream/${UPSTREAM_BRANCH} | tar -x -C .
+
+          # Excluir el workflow de sync en la rama de sync para evitar secret scanning
+          rm -f .github/workflows/sync-template.yml || true
+
+          # Crear el commit con el snapshot
           git add -A
-          git diff --cached --quiet || git commit -m "Remove sync-template workflow from sync branch"
+          git commit -m "Sync snapshot from upstream (${UPSTREAM_REPO}:${UPSTREAM_BRANCH})"
 
           # Verificar diferencias entre ramas, ignorando el archivo de workflow
           if git diff --name-only ${BASE_BRANCH}..sync/front-template -- . ':!.github/workflows/sync-template.yml' | grep -q .; then
