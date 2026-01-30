@@ -115,7 +115,23 @@ jobs:
 
             ---
             _Generado automáticamente por GitHub Actions_
-          delete-branch: false
+
+      - name: Crear Pull Request con cambios del upstream
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          branch: upstream/main
+          title: "🔄 Merge cambios del upstream"
+          body: |
+            Este PR fusiona los cambios traídos desde el upstream en la rama `main` de este repositorio.
+
+            **Upstream:** `${{ env.UPSTREAM_REPO }}`
+            **Branch:** `${{ env.UPSTREAM_BRANCH }}`
+
+            ---
+            _Generado automáticamente por GitHub Actions_
 
       - name: Compare with upstream
         run: |
