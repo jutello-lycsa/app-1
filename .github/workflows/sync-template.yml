@@ -39,9 +39,7 @@ jobs:
             "https://github.com/${UPSTREAM_REPO}.git" "$TMP_DIR"
 
           echo "Comparando contenido..."
-          git diff "$TMP_DIR" ./ > diff_output.txt || echo "Error en git diff"
-
-          if [ -s diff_output.txt ]; then
+          if git diff "$TMP_DIR" ./ | grep -q .; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             git commit -m "Sync with upstream template"
           else
