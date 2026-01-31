@@ -35,6 +35,8 @@ jobs:
       GH_OWNER: ${{ github.repository_owner }}
       # Controla si se sincronizan los workflows desde upstream (requiere PAT con scope "workflow")
       SYNC_WORKFLOWS: "false"
+      # Crear el PR como borrador (no aprobado ni listo para merge)
+      PR_DRAFT: "true"
 
     steps:
       # 1) Checkout del repositorio privado (RAMA B) en main
@@ -176,6 +178,8 @@ jobs:
           BODY="This PR synchronizes changes from the upstream template repository (jutello-lycsa/front-template main) into this repository.\n\n- Source: https://github.com/jutello-lycsa/front-template (main)\n- Target: ${REPO} (${BASE})\n- Strategy: snapshot of upstream/main into ${HEAD} (no auto-merge)\n- Workflows: ${SYNC_WORKFLOWS} (set to 'true' to include upstream .github/workflows; requires PAT with 'workflow' scope)\n\nCreated automatically by the 'upstream-sync' workflow."
           AUTH_HEADER="Authorization: Bearer ${TOKEN}"
           ACCEPT_HEADER="Accept: application/vnd.github+json"
+          # Draft flag handling
+          if [ "${PR_DRAFT}" = "true" ]; then DRAFT_JSON=true; else DRAFT_JSON=false; fi
 
           # Buscar PR abierto desde HEAD hacia BASE (evita duplicados)
           EXISTING=$(curl -sS -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "${API}/repos/${REPO}/pulls?head=${GH_OWNER}:${HEAD}&base=${BASE}&state=open")
@@ -193,7 +197,7 @@ jobs:
 
           echo "Creating new PR from ${HEAD} to ${BASE}"
           CREATE=$(curl -sS -X POST -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "${API}/repos/${REPO}/pulls" \
-            -d "$(jq -nc --arg title "$TITLE" --arg head "$HEAD" --arg base "$BASE" --arg body "$BODY" '{title:$title, head:$head, base:$base, body:$body, maintainer_can_modify:true}')")
+            -d "$(jq -nc --arg title "$TITLE" --arg head "$HEAD" --arg base "$BASE" --arg body "$BODY" --argjson draft "$DRAFT_JSON" '{title:$title, head:$head, base:$base, body:$body, maintainer_can_modify:true, draft:$draft}')")
           NUMBER=$(echo "$CREATE" | jq -r '.number')
           if [ "$NUMBER" = "null" ] || [ -z "$NUMBER" ]; then
             echo "::error::Failed to create PR. Response: $CREATE"
