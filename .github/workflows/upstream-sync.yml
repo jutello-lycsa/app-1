@@ -33,6 +33,8 @@ jobs:
       UPSTREAM_URL: https://github.com/jutello-lycsa/front-template.git
       REPO_FULL: ${{ github.repository }}
       GH_OWNER: ${{ github.repository_owner }}
+      # Controla si se sincronizan los workflows desde upstream (requiere PAT con scope "workflow")
+      SYNC_WORKFLOWS: "false"
 
     steps:
       # 1) Checkout del repositorio privado (RAMA B) en main
@@ -111,6 +113,12 @@ jobs:
           git clean -fdx
           # Extraer el snapshot de upstream/main en el working directory
           git archive --format=tar upstream/main | tar -x -C .
+          # Opcional: NO sincronizar workflows para evitar bloqueos de push protection/permissions
+          if [ "${SYNC_WORKFLOWS}" != "true" ]; then
+            rm -rf .github/workflows || true
+            # Restaurar los workflows propios desde origin/main (incluye este upstream-sync)
+            git checkout "origin/${BASE_BRANCH}" -- .github/workflows || true
+          fi
           # Nota: esto crea un commit nuevo con el contenido de upstream, evitando arrastrar su historial
 
       - name: Sanitize token patterns before commit
@@ -165,7 +173,7 @@ jobs:
           BASE="${BASE_BRANCH}"
           HEAD="${SYNC_BRANCH}"
           TITLE="chore: sync from upstream template"
-          BODY="This PR synchronizes changes from the upstream template repository (jutello-lycsa/front-template main) into this repository.\n\n- Source: https://github.com/jutello-lycsa/front-template (main)\n- Target: ${REPO} (${BASE})\n- Strategy: snapshot of upstream/main into ${HEAD} (no auto-merge)\n\nCreated automatically by the 'upstream-sync' workflow."
+          BODY="This PR synchronizes changes from the upstream template repository (jutello-lycsa/front-template main) into this repository.\n\n- Source: https://github.com/jutello-lycsa/front-template (main)\n- Target: ${REPO} (${BASE})\n- Strategy: snapshot of upstream/main into ${HEAD} (no auto-merge)\n- Workflows: ${SYNC_WORKFLOWS} (set to 'true' to include upstream .github/workflows; requires PAT with 'workflow' scope)\n\nCreated automatically by the 'upstream-sync' workflow."
           AUTH_HEADER="Authorization: Bearer ${TOKEN}"
           ACCEPT_HEADER="Accept: application/vnd.github+json"
 
