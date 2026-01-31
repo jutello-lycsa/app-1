@@ -58,6 +58,8 @@ jobs:
           # Poblar la rama con el contenido exacto de upstream/main
           git fetch upstream
           git archive upstream/${UPSTREAM_BRANCH} | tar -x -C .
+          echo "Archivos copiados desde upstream/main:"
+          find . -type f | grep -v ".github/workflows/sync-template.yml" || true
 
           # Eliminar el workflow antes de hacer commit
           rm -f .github/workflows/sync-template.yml || true
