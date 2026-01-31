@@ -99,13 +99,40 @@ jobs:
         run: echo "Up to date. Nothing to do."
 
       # 7) Crear/actualizar branch de sincronización y aplicar merge desde upstream/main
-      - name: Create/update sync branch from UPSTREAM snapshot
+      - name: Create/update sync branch from UPSTREAM snapshot (no history)
         if: steps.diffcheck.outputs.has_changes == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          # Construir la rama de sync como snapshot de upstream/main (sin merge)
-          git checkout -B "${SYNC_BRANCH}" "upstream/main"
+          # Construir la rama de sync partiendo de origin/main, SIN importar el historial de upstream
+          git checkout -B "${SYNC_BRANCH}" "origin/${BASE_BRANCH}"
+          # Limpiar el árbol de trabajo para reflejar exactamente el contenido de upstream/main
+          git ls-files -z | xargs -0 -r git rm -f --quiet || true
+          git clean -fdx
+          # Extraer el snapshot de upstream/main en el working directory
+          git archive --format=tar upstream/main | tar -x -C .
+          # Nota: esto crea un commit nuevo con el contenido de upstream, evitando arrastrar su historial
+
+      - name: Sanitize token patterns before commit
+        if: steps.diffcheck.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remover posibles patrones de tokens que activan push protection
+          PAT1='ghp_[A-Za-z0-9]{36}'
+          PAT2='github_pat_[A-Za-z0-9_]{22}_[A-Za-z0-9]{59}'
+          MATCHES=$(grep -RInE "$PAT1|$PAT2" . || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Detected token-like patterns; redacting before commit."
+            # Reemplazar en todos los archivos
+            grep -RIlE "$PAT1|$PAT2" . | xargs -r sed -E -i "s/$PAT1/REDACTED_TOKEN/g; s/$PAT2/REDACTED_TOKEN/g"
+          fi
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit after sanitization."
+          else
+            git commit -m "chore(upstream-sync): snapshot from upstream/main (sanitized)"
+          fi
 
       # 8) Push de la branch de sincronización al remoto
       - name: Push sync branch
