@@ -1,0 +1,171 @@
+# Workflow: Upstream Sync
+# Sincroniza cambios desde el template público (RAMA A) hacia este repo (RAMA B).
+# Estrategia: merge estable desde upstream/main hacia branch local upstream-sync/main y PR hacia main.
+
+name: upstream-sync
+
+# Disparadores: cada 10 minutos y manual
+on:
+  schedule:
+    - cron: "0 6 * * *" # cada 10 minutos
+  workflow_dispatch:
+
+# Evita ejecuciones concurrentes superpuestas del mismo job
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: true
+
+# Permisos mínimos necesarios para escribir contenidos y gestionar PRs
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync from upstream template
+    runs-on: ubuntu-latest
+
+    # Variables del workflow (ajustables)
+    env:
+      BASE_BRANCH: main
+      SYNC_BRANCH: upstream-sync/main
+      # URL del repo upstream (RAMA A)
+      UPSTREAM_URL: https://github.com/jutello-lycsa/front-template.git
+      REPO_FULL: ${{ github.repository }}
+      GH_OWNER: ${{ github.repository_owner }}
+
+    steps:
+      # 1) Checkout del repositorio privado (RAMA B) en main
+      - name: Checkout BASE_BRANCH
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          persist-credentials: false # gestionamos credenciales manualmente
+          fetch-depth: 0 # historial completo para merges/rebases robustos
+
+      # 2) Resolver token de autenticación: usa PAT si existe, si no GITHUB_TOKEN
+      - name: Resolve auth token
+        id: resolve_token
+        shell: bash
+        env:
+          PREFERRED_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+          FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TOKEN="${PREFERRED_TOKEN:-$FALLBACK_TOKEN}"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      # 3) Configurar git, upstream remote y credenciales de origin
+      - name: Configure git and remotes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # upstream: público (solo lectura)
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream "$UPSTREAM_URL"
+          else
+            git remote add upstream "$UPSTREAM_URL"
+          fi
+          # origin: con token para push
+          git remote set-url origin "https://x-access-token:${{ steps.resolve_token.outputs.token }}@github.com/${REPO_FULL}.git"
+
+      # 4) Traer main de origin y main de upstream
+      - name: Fetch branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin "${BASE_BRANCH}"
+          git fetch --prune upstream "main"
+
+      # 5) Comparar cambios real entre origin/main y upstream/main
+      - name: Detect differences
+        id: diffcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet "origin/${BASE_BRANCH}" "upstream/main"; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No differences between origin/${BASE_BRANCH} and upstream/main."
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Differences detected between origin/${BASE_BRANCH} and upstream/main."
+          fi
+
+      # 6) Salir temprano si no hay diferencias
+      - name: Exit when no differences
+        if: steps.diffcheck.outputs.has_changes == 'false'
+        run: echo "Up to date. Nothing to do."
+
+      # 7) Crear/actualizar branch de sincronización y aplicar merge desde upstream/main
+      - name: Create/update sync branch from BASE_BRANCH
+        if: steps.diffcheck.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Partimos de origin/main para reconstruir la branch de sync
+          git checkout -B "${SYNC_BRANCH}" "origin/${BASE_BRANCH}"
+          # Merge estable; si hay conflicto, abortar y fallar
+          git merge --no-ff --no-edit "upstream/main" || { echo "::error::Merge conflict during upstream sync."; git merge --abort || true; exit 1; }
+
+      # 8) Push de la branch de sincronización al remoto
+      - name: Push sync branch
+        if: steps.diffcheck.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force-with-lease origin "${SYNC_BRANCH}"
+
+      # 9) Crear/actualizar PR mediante API (evita duplicados) y aplicar labels
+      - name: Ensure jq installed
+        if: steps.diffcheck.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y jq
+          fi
+
+      - name: Create or update PR
+        if: steps.diffcheck.outputs.has_changes == 'true'
+        shell: bash
+        env:
+          TOKEN: ${{ steps.resolve_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com"
+          REPO="${REPO_FULL}"
+          BASE="${BASE_BRANCH}"
+          HEAD="${SYNC_BRANCH}"
+          TITLE="chore: sync from upstream template"
+          BODY="This PR synchronizes changes from the upstream template repository (jutello-lycsa/front-template main) into this repository.\n\n- Source: https://github.com/jutello-lycsa/front-template (main)\n- Target: ${REPO} (${BASE})\n- Strategy: merge upstream/main into ${HEAD}\n\nCreated automatically by the 'upstream-sync' workflow."
+          AUTH_HEADER="Authorization: Bearer ${TOKEN}"
+          ACCEPT_HEADER="Accept: application/vnd.github+json"
+
+          # Buscar PR abierto desde HEAD hacia BASE (evita duplicados)
+          EXISTING=$(curl -sS -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "${API}/repos/${REPO}/pulls?head=${GH_OWNER}:${HEAD}&base=${BASE}&state=open")
+          COUNT=$(echo "$EXISTING" | jq 'length')
+          if [ "$COUNT" -ge 1 ]; then
+            NUMBER=$(echo "$EXISTING" | jq -r '.[0].number')
+            echo "Updating existing PR #${NUMBER}"
+            curl -sS -X PATCH -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "${API}/repos/${REPO}/pulls/${NUMBER}" \
+              -d "$(jq -nc --arg title "$TITLE" --arg body "$BODY" '{title:$title, body:$body}')" >/dev/null
+            # Labels opcionales
+            curl -sS -X POST -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "${API}/repos/${REPO}/issues/${NUMBER}/labels" \
+              -d '{"labels":["automation","upstream-sync"]}' >/dev/null
+            exit 0
+          fi
+
+          echo "Creating new PR from ${HEAD} to ${BASE}"
+          CREATE=$(curl -sS -X POST -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "${API}/repos/${REPO}/pulls" \
+            -d "$(jq -nc --arg title "$TITLE" --arg head "$HEAD" --arg base "$BASE" --arg body "$BODY" '{title:$title, head:$head, base:$base, body:$body, maintainer_can_modify:true}')")
+          NUMBER=$(echo "$CREATE" | jq -r '.number')
+          if [ "$NUMBER" = "null" ] || [ -z "$NUMBER" ]; then
+            echo "::error::Failed to create PR. Response: $CREATE"
+            exit 1
+          fi
+          echo "Created PR #${NUMBER}"
+          curl -sS -X POST -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "${API}/repos/${REPO}/issues/${NUMBER}/labels" \
+            -d '{"labels":["automation","upstream-sync"]}' >/dev/null
