@@ -99,15 +99,13 @@ jobs:
         run: echo "Up to date. Nothing to do."
 
       # 7) Crear/actualizar branch de sincronización y aplicar merge desde upstream/main
-      - name: Create/update sync branch from BASE_BRANCH
+      - name: Create/update sync branch from UPSTREAM snapshot
         if: steps.diffcheck.outputs.has_changes == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          # Partimos de origin/main para reconstruir la branch de sync
-          git checkout -B "${SYNC_BRANCH}" "origin/${BASE_BRANCH}"
-          # Merge estable; si hay conflicto, abortar y fallar
-          git merge --no-ff --no-edit "upstream/main" || { echo "::error::Merge conflict during upstream sync."; git merge --abort || true; exit 1; }
+          # Construir la rama de sync como snapshot de upstream/main (sin merge)
+          git checkout -B "${SYNC_BRANCH}" "upstream/main"
 
       # 8) Push de la branch de sincronización al remoto
       - name: Push sync branch
@@ -140,7 +138,7 @@ jobs:
           BASE="${BASE_BRANCH}"
           HEAD="${SYNC_BRANCH}"
           TITLE="chore: sync from upstream template"
-          BODY="This PR synchronizes changes from the upstream template repository (jutello-lycsa/front-template main) into this repository.\n\n- Source: https://github.com/jutello-lycsa/front-template (main)\n- Target: ${REPO} (${BASE})\n- Strategy: merge upstream/main into ${HEAD}\n\nCreated automatically by the 'upstream-sync' workflow."
+          BODY="This PR synchronizes changes from the upstream template repository (jutello-lycsa/front-template main) into this repository.\n\n- Source: https://github.com/jutello-lycsa/front-template (main)\n- Target: ${REPO} (${BASE})\n- Strategy: snapshot of upstream/main into ${HEAD} (no auto-merge)\n\nCreated automatically by the 'upstream-sync' workflow."
           AUTH_HEADER="Authorization: Bearer ${TOKEN}"
           ACCEPT_HEADER="Accept: application/vnd.github+json"
 
