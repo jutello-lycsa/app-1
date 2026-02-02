@@ -39,7 +39,7 @@ jobs:
       - name: Configure Git Safe Directory
         run: |
           echo "Configurando el directorio seguro para Git..."
-          /usr/bin/git config --global --add safe.directory /home/runner/work/app-1
+          /usr/bin/git config --global --add safe.directory /home/runner/work/${{ github.event.repository.name }}
 
       - name: Create sync branch from upstream
         id: changes
