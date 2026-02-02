@@ -7,7 +7,7 @@ name: upstream-sync
 # Disparadores: cada 10 minutos y manual
 on:
   schedule:
-    - cron: "0 6 * * *" # cada 10 minutos
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 # Evita ejecuciones concurrentes superpuestas del mismo job
