@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   sync:
+    if: github.ref != 'refs/heads/front-template'
     name: Sync from upstream template
     runs-on: ubuntu-latest
 
